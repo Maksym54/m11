@@ -1,3 +1,4 @@
+from xmlrpc.client import Boolean
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from passlib.context import CryptContext
@@ -12,6 +13,7 @@ class User(Base):
     hashed_password = Column(String)
     access_token = Column(String, nullable=True)
     refresh_token = Column(String, nullable=True)
+    is_verified = Column(Boolean, default=False)
 
 class UserCreate:
     email: str

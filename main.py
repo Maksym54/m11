@@ -1,6 +1,6 @@
 import app
 from django.conf.global_settings import SECRET_KEY
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.models import Contact
 from sqlalchemy import create_engine, Column, Integer, String, DateTime
@@ -9,8 +9,14 @@ from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from fastapi import Depends, status
+from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from fastapi_limiter import FastAPILimiter
+from fastapi import Depends
+from database import SessionLocal
+from models import User
+from auto import get_user_email
+
 
 SECRET_KEY = "123654"
 ALGORITHM = "HS256"
@@ -58,7 +64,22 @@ class ContactCreate(BaseModel):
 class ContactUpdate(ContactCreate):
     pass
 
-@app.get("/contacts/", response_model=list[Contact], summary="Get list of contacts")
+limiter = FastAPILimiter(key_func=get_user_email)
+rate_limit = Depends(limiter)
+
+@app.post("/contacts/", response_model=Contact, dependencies=[rate_limit])
+def create_contact(
+    contact: ContactCreate,
+    current_user: User = Depends(get_current_user),
+    db: SessionLocal = Depends(SessionLocal),
+):
+    db_contact = Contact(**contact.dict(), user_id=current_user.id)
+    db.add(db_contact)
+    db.commit()
+    db.refresh(db_contact)
+    return db_contact
+
+@app.get("/contacts/", response_model=list[Contact], summary="Get list of contacts", dependencies=[Depends(rate_limit)])
 def read_contacts(query: str = Query(None, description="Search by name, last name, or email")):
     """
     Retrieve a list of contacts.
@@ -84,14 +105,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+limiter = FastAPILimiter(key_func=get_user_email)
+rate_limit = Depends(limiter)
+
+origins = [
+    "http://localhost",
+    "http://localhost:8000",
+    "https://frontendapp.com"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.post("/contacts/", response_model=Contact)
-def create_contact(contact: ContactCreate):
+def create_contact(contact: ContactCreate, db: SessionLocal = Depends(SessionLocal)):
     db_contact = Contact(**contact.dict())
-    db = SessionLocal()
     db.add(db_contact)
     db.commit()
     db.refresh(db_contact)
-    db.close()
     return db_contact
 
 @app.get("/contacts/", response_model=list[Contact])

@@ -5,8 +5,42 @@ from mongoengine import get_db
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from main import SessionLocal, app
+from main import SessionLocal, app, oauth2_scheme
 from models import User, UserCreate
+from sqlalchemy.orm import Session
+from .models import User
+
+def get_user_email(token: str = Depends(oauth2_scheme), db: Session = Depends(SessionLocal)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return email
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(SessionLocal)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub")
+        if email is None:
+            raise credentials_exception
+        token_data = {"sub": email}
+    except JWTError:
+        raise credentials_exception
+    return token_data
 
 SECRET_KEY = "123654"
 ALGORITHM = "HS256"
